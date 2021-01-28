@@ -13,13 +13,17 @@ coin = pygame.image.load('coin.png')
 fin = pygame.image.load('fin.jpeg')
 lava = pygame.image.load('lava.png')
 clouds = pygame.image.load('cloud.png')
+clouds2 = pygame.image.load('cloud2.png')
 mounts = pygame.image.load('Mountains.png')
+pyramids = pygame.image.load('pyramids.png')
+trees = pygame.image.load('trees.png')
 window = pygame.display.set_mode((800, 600)) 
 onfin = False
-x = 0 #x for the ground
+stack = False
+x = 0 #x for the groundd
 x2 = -1100 #x for the other ground
 playerx=268 #fake playerx for putting images that dont need to repeat
-jumpcount = 40 
+jumpcount = 20
 jump = 0
 animate = 1 
 pygame.display.set_caption('Platformer Shooter')
@@ -28,7 +32,7 @@ monsters = []
 clock = pygame.time.Clock()
 white = (255, 255, 255)
 black = (0, 0, 0)
-blue = (50, 155, 255)
+bgcolor = (50, 155, 255)
 collisionl = False
 collisionr = False
 collisiontop = False
@@ -36,7 +40,6 @@ font = pygame.font.SysFont(None, 24)
 fontbig = pygame.font.SysFont(None, 100)
 jumpupspeed = 10
 gravityspeed = 4
-cloudx = 0
 pygame.mixer.get_init()
 pygame.mixer.get_num_channels()
 shootsound = pygame.mixer.Sound('shoot.wav')
@@ -48,7 +51,7 @@ class Player:
         self.y = y
         self.level = 1
         self.score = 0
-        self.vel = 2
+        self.vel = 4
         self.facing = ('right')
         self.PlayerIdle = (pygame.image.load('PlayerIdle.png'))
         self.PlayerRun1 = (pygame.image.load('PlayerRun1.png'))
@@ -64,8 +67,10 @@ class Player:
         self.PlayerShootIdleL = (pygame.image.load('PlayerShootIdleL.png'))
         self.state = self.PlayerIdle
         self.playerrect = Rect(self.x+14, self.y+4, 34 , 55)
+        self.rectrange = Rect(self.x, self.y - 50, 60, 160)
     def render(self):
         window.blit((player.state), (self.x, self.y))
+        self.rectrange = Rect(self.x, self.y - 50, 60, 160)
         self.playerrect = Rect(self.x+14, self.y+4, 34 , 55)
 
 
@@ -178,42 +183,53 @@ class Mounts:
         self.x = 0
         self.y = 0
         self.displacement = displacement
-    def locate(self, x):
-        self.x = x
-        # if self.x == 800:
-        #     self.x=0
-        #     for m in MountsList:
-        #         m.displacement+=400
-        # elif self.x == -800:
-        #     self.x=0
-        #     for m in MountsList:
-        #         m.displacement-=400
+        self.currentimg = mounts
+    def locate(self, groundmove, lvl):
+        self.x += groundmove / 2
+        if lvl == 1:
+            self.currentimg = mounts
+        elif lvl == 2:
+            self.currentimg = pyramids
+        elif lvl == 3:
+            self.currentimg = trees
     def render(self):
-        window.blit(mounts, (self.x - self.displacement, self.y))
+        window.blit(self.currentimg, (self.x - self.displacement, self.y))
 
 class Clouds:
     def __init__(self, displacement):
         self.x = 0
         self.y = 0
         self.displacement = displacement
-    def locate(self, x):
-        self.x = x
+        self.currentimg = clouds
+    def locate(self, groundmove, lvl):
+        self.x += groundmove / 4
+        if lvl == 1 or lvl == 3:
+            self.currentimg = clouds
+        elif lvl == 2:
+            self.currentimg = clouds2
     def render(self):
-        window.blit(clouds, (self.x - self.displacement, self.y))
+        window.blit(self.currentimg, (self.x - self.displacement, self.y))
 
 def generatemonsters(multyplyer):
-    if len(monsters) < multyplyer*player.score+1: #only 10 slimes on the map at a time
+    stack = False
+    if len(monsters) < 10: #only 10 slimes on the map at a time multyplyer*player.score+1
         for p in map1:
-            if p[3] != 'f':
+            if p[3] != 'f' and p[3] != 'l':
                 block = map1.index(p)
                 yspot = p[0]-30
                 endofground = (((p[2]*60)+p[1]))
                 xranges = random.choice([p[1], endofground])
 
-                if player.playerrect.colliderect(xranges-120, yspot, 240, 30):# player collides with slime
+                if player.playerrect.colliderect(xranges-120, yspot, 240, 30) or player.rectrange.colliderect(xranges-120, yspot, 240, 30):# player collides with slime
                     pass
                 else:
-                    monsters.append(Monsters(xranges, yspot, block))
+                    for m in monsters:
+                        m.slimerect = Rect(m.x, m.y, m.img.get_size()[0] , m.img.get_size()[1])
+                        if m.slimerect.colliderect(xranges-120, yspot, 240, 30):
+                            stack = True
+                            break
+                    if stack == False:
+                        monsters.append(Monsters(xranges, yspot, block))
 
         xranges = random.choice([-800, 800])
         monsters.append(Monsters(xranges, 510))
@@ -264,6 +280,12 @@ def die():
 player = Player(268, 475)
 bullet = Bullet(0, 0)
 
+def ResetParallax():
+    for m in MountsList:
+        m.x = 0
+    for c in CloudsList:
+        c.x = 0
+
 MountsList = []
 MountsList.append(Mounts(0))
 MountsList.append(Mounts(-800))
@@ -273,18 +295,19 @@ CloudsList = []
 CloudsList.append(Clouds(0))
 CloudsList.append(Clouds(-800))
 CloudsList.append(Clouds(800))
+
 lencoins = 5
 gameLoop = True
 while gameLoop:
     fps = font.render('FPS: '+str(int(clock.get_fps())), True, (black))
     score = font.render('Score: '+str(player.score)+'/'+str(lencoins), True, (0,0,0))
     level = font.render('Level: '+str(player.level), True, (0,0,0))
-    window.fill(blue)
+    window.fill(bgcolor)
 
     for m in MountsList:
-        m.locate(cloudx / 2)
+        m.locate(groundmove, player.level)
     for c in CloudsList:
-        c.locate(cloudx / 4)
+        c.locate(groundmove, player.level)
     
     for c in CloudsList:
         c.render()
@@ -322,7 +345,6 @@ while gameLoop:
                 player.state = player.PlayerRun4L
             x += groundmove 
             playerx+=groundmove
-            cloudx += groundmove
 
             if x > 0:
                x = -71.428571429
@@ -350,7 +372,6 @@ while gameLoop:
      
             x += groundmove
             playerx+=groundmove
-            cloudx+=groundmove
             if x <= -212:
                 x = 0 
 
@@ -364,14 +385,17 @@ while gameLoop:
     li = list((str(keys)).split(", ")) # list of all keys 0 not pressed 1 pressed 
 
     if keys[pygame.K_w] or jump == 1:
-        player.state = player.PlayerIdle
+        if player.facing == 'right':
+            player.state = player.PlayerIdle
+        else:
+            player.state = player.PlayerIdleL
         jump = 1
         if jumpcount > 0:
-            player.y -= jumpupspeed
+            player.y -= jumpcount
             jumpcount -=1
         else:
             if (int(li[26]) == 0 and (collisiontop==True or player.y==475)) or (collisiontop==True or player.y==475): #if collisiontop==True or player.y==475 is removed you cant repeatedly jump
-                jumpcount = 30
+                jumpcount = 20
                 jump = 0 
 
 
@@ -423,7 +447,8 @@ while gameLoop:
       #check for collision if there are no monsters
     check = Collision(0, coinsmap)
 
-    
+    player.playerrect = Rect(player.x+14, player.y+4, 34 , 55)
+
     for j in map1:  
 
         endofground = (((j[2]*60)))
@@ -436,20 +461,21 @@ while gameLoop:
             onfin = False
         if player.playerrect.colliderect(tilesrect.x, tilesrect.y+10, endofground, 34):#collision on bottom side
             jumpcount = 0
+            player.y - 2
         if player.playerrect.colliderect(tilesrect.x, tilesrect.y-5, endofground, 34):#collision on top side
             collisiontop = True
             if j[3] == 'f':
                 onfin=True
             if j[3] == 'l':
                 die()
-        if player.playerrect.colliderect(tilesrect.x+5, tilesrect.y, endofground, 34): #collision on right side
+        if player.playerrect.colliderect(tilesrect.x+10, tilesrect.y, endofground, 34): #collision on right side
             collisionl = True
-        if player.playerrect.colliderect(tilesrect.x-5, tilesrect.y, endofground, 34): #collision on left side
+        if player.playerrect.colliderect(tilesrect.x-10, tilesrect.y, endofground, 34): #collision on left side
             collisionr = True
 
     if player.y != 475 and collisiontop == False: #gravity
 
-        player.y += gravityspeed
+        player.y += gravityspeed 
     if player.y > 475:
         player.y=475
 
@@ -461,17 +487,46 @@ while gameLoop:
         player.level += 1
         #scorenxtlvl=len(coinslist)
         player.score=0
-        coinsmap = coinslist[player.level-1]
-        map1 = levelslist[player.level-1]
-        level = fontbig.render('Level: '+str(player.level), True, (64,255,25))
-        monsters.clear()
-        lencoins=len(coinsmap)
-        for x in range(100): 
-            window.fill((0, 0, x))
-            window.blit(level, (100+2*x, 300))
-            pygame.display.flip()
-            time.sleep(.01)
-        player.y=475
+        if player.level < 4:
+            coinsmap = coinslist[player.level-1]
+            map1 = levelslist[player.level-1]
+            level = fontbig.render('Level: '+str(player.level), True, (64,255,25))
+            monsters.clear()
+            lencoins=len(coinsmap)
+            ResetParallax()
+            for x in range(100): 
+                window.fill((0, 0, x))
+                window.blit(level, (100+2*x, 300))
+                pygame.display.flip()
+                time.sleep(.01)
+            player.y=475
+            if player.level == 2:
+                bgcolor = (255, 175, 122)
+                tile = pygame.image.load('sand.png')
+                bg = pygame.image.load('sandlong.png')
+                bg2 = pygame.image.load('sandlong.png')
+            elif player.level == 3:
+                bgcolor = (186, 252, 255)
+                tile = pygame.image.load('snow.png')
+                bg = pygame.image.load('snowlong.png')
+                bg2 = pygame.image.load('snowlong.png')
+        else:
+            counter = 0
+            addon = 1
+            final = fontbig.render('You win!', True, (0, 0, 0))
+            while True: 
+                window.fill((0, 100, counter))
+                window.blit(final, (250, 300))
+                pygame.display.flip()
+                if counter == 255:
+                    addon = -1
+                if counter == 0:
+                    addon = 1
+                counter += addon
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                time.sleep(.01)
 
     tiles(map1, groundmove, tile) #show the grounds
     coins(coinsmap, groundmove, coin)
@@ -482,5 +537,4 @@ while gameLoop:
     clock.tick(60)
 
 pygame.quit()
-
 
